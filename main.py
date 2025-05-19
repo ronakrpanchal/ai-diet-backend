@@ -5,6 +5,7 @@ from llm import get_structured_output, store_response_mongo, get_user_data_mongo
 from pymongo import MongoClient
 import os
 from dotenv import load_dotenv
+from bson import ObjectId
 
 load_dotenv()
 
@@ -15,69 +16,93 @@ app = FastAPI()
 # Chat Request Body
 class ChatRequest(BaseModel):
     message: str
-    user_id: int
+    user_id: str
 
 # ---------------------------
 # GET /user?id=
 # ---------------------------
 @app.get("/user")
-def get_user(id: int = Query(..., description="User ID")):    
-    client = MongoClient(MONGO_URI)
-    db = client["health_ai"]
-    collection = db["users"]
-    user_data = collection.find_one({"_id": id})
-    if not user_data:
-        raise HTTPException(status_code=404, detail="User not found")
-    else:
+def get_user(id: str = Query(..., description="MongoDB ObjectId of the user")):
+    try:
+        client = MongoClient(MONGO_URI)
+        db = client["health_ai"]
+        collection = db["users"]
+        
+        # Convert string ID to ObjectId
+        object_id = ObjectId(id)
+        user_data = collection.find_one({"_id": object_id})
+        
+        if not user_data or "personal_info" not in user_data:
+            raise HTTPException(status_code=404, detail="User not found or profile not completed")
+        
+        info = user_data["personal_info"]
         return {
-            "height": user_data["height"],
-            "weight": user_data["weight"],
-            "age": user_data["age"],
-            "gender": user_data["gender"],
-            "bfp": user_data["bfp"]
+            "name": info["name"],
+            "height": info["height"],
+            "weight": info["weight"],
+            "age": info["age"],
+            "gender": info["gender"],
+            "bfp": info["bfp"]
         }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 # ---------------------------
 # GET /diet?id=
 # ---------------------------
+
 @app.get("/diet")
-def get_diet(id: int = Query(..., description="User ID")):
+def get_diet(id: str = Query(..., description="User ID as MongoDB ObjectId string")):
+    try:
+        object_id = ObjectId(id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid ObjectId")
+
     client = MongoClient(MONGO_URI)
     db = client["health_ai"]
     collection = db["diets"]
-    diet_data = collection.find_one({"user_id": id})
+
+    diet_data = collection.find_one({"user_id": object_id})
     if not diet_data:
         raise HTTPException(status_code=404, detail="Diet not found")
     else:
         return {
             "id": str(diet_data["_id"]),
             "AI_Plan": diet_data["AI_plan"],
-            "user_id": diet_data["user_id"]
+            "user_id": str(diet_data["user_id"])
         }
     
     
 @app.get("/meals")
-def get_meals(id: int = Query(..., description="User ID")):
+def get_meals(id: str = Query(..., description="User ID (ObjectId string)")):
     client = MongoClient(MONGO_URI)
     db = client["health_ai"]
     collection = db["meals"]
-    meal_data = collection.find_one({"user_id": id})
+
+    try:
+        user_object_id = ObjectId(id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid ObjectId format")
+
+    meal_data = collection.find_one({"user_id": user_object_id})
     if not meal_data:
         raise HTTPException(status_code=404, detail="Meals not found")
-    else:
-        meal_logs = meal_data.get("meal_log", [])
-        if not meal_logs:
-            raise HTTPException(status_code=404, detail="No meals logged")
-        return {
-            "id": str(meal_data["_id"]),
-            "meal_logs":meal_logs,
-            "user_id": meal_data["user_id"]
-        }
+
+    meal_logs = meal_data.get("meal_log", [])
+    if not meal_logs:
+        raise HTTPException(status_code=404, detail="No meals logged")
+
+    return {
+        "id": str(meal_data["_id"]),
+        "user_id": str(meal_data["user_id"]),
+        "meal_logs": meal_logs
+    }
 
 # ---------------------------
-# POST /health_ai - Combined endpoint for diet plans and meal logging
+# POST /ai - Combined endpoint for diet plans and meal logging
 # ---------------------------
-@app.post("/health_ai")
+@app.post("/ai")
 def health_ai(request: ChatRequest):
     try:
         user_id = request.user_id

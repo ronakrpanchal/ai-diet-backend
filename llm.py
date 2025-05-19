@@ -3,6 +3,7 @@ import requests
 import json
 from dotenv import load_dotenv
 from pymongo import MongoClient
+from bson import ObjectId
 
 load_dotenv()
 
@@ -17,21 +18,28 @@ HEADERS = {
 
 # ---------- Fetch User Data ----------
 def get_user_data_mongo(user_id: int):
-    client = MongoClient(MONGO_URI)
-    db = client["health_ai"]
-    collection = db["users"]
-    
-    user_data = collection.find_one({"_id": user_id})
-    if not user_data:
-        raise ValueError(f"No user found with ID {user_id}")
-    
-    return {
-        "height": user_data["height"],
-        "weight": user_data["weight"],
-        "age": user_data["age"],
-        "gender":user_data['gender'],
-        "bfp": user_data["bfp"]
-    }
+    try:
+      client = MongoClient(MONGO_URI)
+      db = client["health_ai"]
+      collection = db["users"]
+      
+      # Convert string ID to ObjectId
+      object_id = ObjectId(user_id)
+      user_data = collection.find_one({"_id": object_id})
+      
+      if not user_data or "personal_info" not in user_data:
+          raise ValueError("User not found or profile not completed")
+      info = user_data["personal_info"]
+      return {
+          "name": info["name"],
+          "height": info["height"],
+          "weight": info["weight"],
+          "age": info["age"],
+          "gender": info["gender"],
+          "bfp": info["bfp"]
+      } 
+    except Exception as e:
+        raise ValueError(f"Error fetching user data: {e}")
     
 # ---------- Get Structured Response from Groq API ----------
 
@@ -198,6 +206,7 @@ def store_response_mongo(user_id: int, data: dict):
     diets_collection = db["diets"]
     meals_collection = db["meals"]
     # Check if user exists
+    user_id = ObjectId(user_id)
     user = collection.find_one({"_id": user_id})
     if not user:
         raise ValueError(f"No user found with ID {user_id}")
