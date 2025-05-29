@@ -225,19 +225,3 @@ def store_response_mongo(user_id: int, data: dict):
         )
     
     client.close()
-    
-# ---------- Main Function ----------
-# if __name__ == "__main__":
-    # user_id = 1  # Example user ID
-    # user_prompt = "I had idli and sambhar for breakfast."
-    
-    # try:
-    #     user_data = get_user_data(user_id)
-    #     structured_response = get_structured_output(user_prompt, user_data)
-    #     if structured_response["response_type"] in ["diet_plan","meal_logging"]:
-    #         store_response(user_id, structured_response)
-    #         print("Response stored successfully.")
-    #     else:
-    #         print(structured_response["message"])
-    # except Exception as e:
-    #     print(f"Error: {e}")
